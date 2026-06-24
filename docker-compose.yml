@@ -1,0 +1,7 @@
+services:
+  zabbix-dashboard:
+    build: .
+    container_name: zabbix-dashboard
+    ports:
+      - "8088:80"
+    restart: unless-stopped

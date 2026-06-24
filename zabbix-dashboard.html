@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Zabbix Dashboard - Carmel Hotéis</title>
+<link rel="icon" type="image/jpeg" href="carmel.jpg">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; }
+
+  .header { background: #161b27; border-bottom: 1px solid #2d3748; padding: 1rem 1.5rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+  .header-left { display: flex; align-items: center; gap: 12px; min-width: 260px; }
+  .header-logo { width: 32px; height: 32px; border-radius: 8px; object-fit: cover; flex-shrink: 0; display: block; }
+  .header-title { font-size: 16px; font-weight: 600; color: #f1f5f9; }
+  .header-sub { font-size: 12px; color: #94a3b8; margin-top: 2px; }
+  .header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; flex-shrink: 0; }
+  .status-dot.loading { background: #f59e0b; animation: pulse 1s infinite; }
+  .status-dot.error { background: #ef4444; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  .status-text { font-size: 12px; color: #94a3b8; }
+
+  .filter-bar { background: #0f1117; border-bottom: 1px solid #1e293b; padding: .75rem 1.5rem; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .filter-label { font-size: 12px; color: #94a3b8; margin-right: 4px; }
+  .filter-group { display: flex; gap: 6px; flex-wrap: wrap; }
+  .pill { display: flex; align-items: center; gap: 5px; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid transparent; transition: all .15s; user-select: none; }
+  .pill.media  { background: #1c1a0e; border-color: #78350f; color: #fbbf24; }
+  .pill.alta   { background: #1c0f0f; border-color: #7f1d1d; color: #f87171; }
+  .pill.desastre { background: #1a0808; border-color: #991b1b; color: #ef4444; }
+  .pill.active.media    { background: #78350f; color: #fef3c7; border-color: #d97706; }
+  .pill.active.alta     { background: #7f1d1d; color: #fee2e2; border-color: #dc2626; }
+  .pill.active.desastre { background: #991b1b; color: #fecaca; border-color: #ef4444; }
+  .pill-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
+  .btn { background: #1e293b; border: 1px solid #334155; color: #cbd5e1; padding: 6px 14px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: all .15s; white-space: nowrap; }
+  .btn:hover { background: #273549; color: #f8fafc; }
+
+  .main { padding: 1.5rem; }
+  .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 1.5rem; }
+  .metric { background: #161b27; border: 1px solid #2d3748; border-radius: 8px; padding: 1rem 1.25rem; min-width: 0; }
+  .metric-label { font-size: 12px; color: #94a3b8; margin-bottom: 8px; }
+  .metric-value { font-size: 28px; line-height: 1; font-weight: 650; }
+  .metric-value.blue   { color: #60a5fa; }
+  .metric-value.red    { color: #f87171; }
+  .metric-value.danger { color: #ef4444; }
+  .metric-value.amber  { color: #fbbf24; }
+  .metric-value.green  { color: #4ade80; }
+
+  .charts { display: grid; grid-template-columns: minmax(300px, .8fr) minmax(360px, 1.2fr); gap: 16px; margin-bottom: 1.5rem; align-items: stretch; }
+  .chart-card { background: #161b27; border: 1px solid #2d3748; border-radius: 8px; padding: 1.25rem; min-width: 0; }
+  .chart-card.full { grid-column: 1 / -1; }
+  .chart-title { font-size: 14px; font-weight: 600; color: #f1f5f9; margin-bottom: 4px; }
+  .chart-sub { font-size: 12px; color: #94a3b8; margin-bottom: 1rem; }
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #cbd5e1; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+  .chart-meta { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
+  .meta-item { background: #0f1117; border: 1px solid #243244; border-radius: 8px; padding: 9px 10px; }
+  .meta-label { color: #94a3b8; font-size: 11px; margin-bottom: 4px; }
+  .meta-value { color: #f8fafc; font-size: 18px; font-weight: 650; line-height: 1; }
+  .empty-state { height: 220px; display: none; align-items: center; justify-content: center; color: #64748b; font-size: 13px; border: 1px dashed #334155; border-radius: 8px; }
+  .host-problems { background: #161b27; border: 1px solid #2d3748; border-radius: 8px; padding: 1.25rem; margin-bottom: 1.5rem; }
+  .host-problems.expanded { position: fixed; inset: 16px; z-index: 20; margin: 0; display: flex; flex-direction: column; box-shadow: 0 24px 80px rgba(0, 0, 0, .55); }
+  .host-problems.expanded .host-problems-list { overflow: auto; padding-right: 4px; }
+  .host-problems-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 1rem; flex-wrap: wrap; }
+  .host-problems-actions { display: flex; gap: 8px; align-items: center; }
+  .host-problems-list { display: grid; gap: 12px; }
+  .host-group { border: 1px solid #243244; border-radius: 8px; overflow: hidden; background: #0f1117; }
+  .host-group-header { display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 11px 12px; background: #111827; border-bottom: 1px solid #243244; }
+  .host-name { font-size: 13px; font-weight: 650; color: #f8fafc; word-break: break-word; }
+  .host-count { font-size: 12px; color: #94a3b8; white-space: nowrap; }
+  .problem-row { display: grid; grid-template-columns: 96px minmax(0, 1fr) 150px; gap: 12px; padding: 10px 12px; border-bottom: 1px solid #1e293b; align-items: center; }
+  .problem-row:last-child { border-bottom: 0; }
+  .problem-severity { width: fit-content; border-radius: 999px; padding: 3px 9px; font-size: 11px; font-weight: 650; border: 1px solid #334155; }
+  .problem-severity.s3 { color: #fbbf24; background: #1c1a0e; border-color: #78350f; }
+  .problem-severity.s4 { color: #f87171; background: #1c0f0f; border-color: #7f1d1d; }
+  .problem-severity.s5 { color: #fecaca; background: #1a0808; border-color: #991b1b; }
+  .problem-name { min-width: 0; color: #e2e8f0; font-size: 12px; line-height: 1.35; overflow-wrap: anywhere; }
+  .problem-time { color: #94a3b8; font-size: 11px; text-align: right; white-space: nowrap; }
+  .updated { font-size: 11px; color: #64748b; text-align: right; margin-top: 1rem; }
+
+  @media (max-width: 900px) {
+    .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .charts { grid-template-columns: 1fr; }
+    .chart-card.full { grid-column: 1; }
+  }
+
+  @media (max-width: 520px) {
+    .header, .filter-bar, .main { padding-left: 1rem; padding-right: 1rem; }
+    .metrics { grid-template-columns: 1fr; }
+    .problem-row { grid-template-columns: 1fr; gap: 6px; }
+    .problem-time { text-align: left; white-space: normal; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <img class="header-logo" src="carmel.jpg" alt="Carmel Hotéis">
+    <div>
+      <div class="header-title">Zabbix Dashboard</div>
+      <div class="header-sub">Carmel Hotéis - monitoramento de infraestrutura</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <span class="status-dot loading" id="statusDot"></span>
+    <span class="status-text" id="statusText">Aguardando dados...</span>
+    <button class="btn" onclick="loadData()">Atualizar</button>
+  </div>
+</div>
+
+<div class="filter-bar">
+  <span class="filter-label">Severidade:</span>
+  <div class="filter-group" id="sevFilters">
+    <div class="pill alta active" data-sev="4" onclick="toggleSev(this)"><span class="pill-dot"></span>Alta</div>
+    <div class="pill desastre active" data-sev="5" onclick="toggleSev(this)"><span class="pill-dot"></span>Desastre</div>
+  </div>
+</div>
+
+<div class="main">
+  <div class="metrics">
+    <div class="metric"><div class="metric-label">Problemas no filtro</div><div class="metric-value blue" id="mTotal">-</div></div>
+    <div class="metric"><div class="metric-label">Alta</div><div class="metric-value red" id="mAlta">-</div></div>
+    <div class="metric"><div class="metric-label">Desastre</div><div class="metric-value danger" id="mDesastre">-</div></div>
+    <div class="metric"><div class="metric-label">Hosts afetados</div><div class="metric-value amber" id="mHosts">-</div></div>
+  </div>
+
+  <div class="charts">
+    <div class="chart-card">
+      <div class="chart-title">Painel de severidade</div>
+      <div class="chart-sub">Distribuição dos eventos ativos filtrados</div>
+      <div class="chart-meta">
+        <div class="meta-item"><div class="meta-label">Desastre</div><div class="meta-value" id="sevDisaster">0</div></div>
+        <div class="meta-item"><div class="meta-label">Alta</div><div class="meta-value" id="sevHigh">0</div></div>
+        <div class="meta-item"><div class="meta-label">Hosts afetados</div><div class="meta-value" id="sevHosts">0</div></div>
+      </div>
+      <div class="legend" id="legendSev"></div>
+      <div id="sevEmpty" class="empty-state">Sem eventos para o filtro atual.</div>
+      <div id="sevChartWrap" style="position:relative;height:250px;"><canvas id="chartSev" role="img" aria-label="Gráfico de rosca com problemas por severidade">Distribuição de problemas por severidade.</canvas></div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-title">Hosts com mais alertas</div>
+      <div class="chart-sub">Ranking operacional para priorização</div>
+      <div id="hostEmpty" class="empty-state">Nenhum host com eventos no filtro atual.</div>
+      <div style="position:relative;" id="hostWrap"><canvas id="chartHost" role="img" aria-label="Gráfico de barras horizontal com problemas por host">Contagem de problemas por host.</canvas></div>
+    </div>
+
+  </div>
+
+  <div class="host-problems" id="hostProblemsPanel">
+    <div class="host-problems-header">
+      <div>
+        <div class="chart-title">Problemas por host</div>
+        <div class="chart-sub">Lista de eventos ativos agrupados por servidor</div>
+      </div>
+      <div class="host-problems-actions">
+        <button class="btn" id="toggleHostProblemsPanel" onclick="toggleHostProblemsPanel()">Ampliar</button>
+      </div>
+    </div>
+    <div id="problemEmpty" class="empty-state">Nenhum problema encontrado para os filtros atuais.</div>
+    <div id="hostProblemsList" class="host-problems-list"></div>
+  </div>
+
+  <div class="updated" id="updatedAt"></div>
+</div>
+
+<script>
+const N8N_WEBHOOK_URL = 'https://n8n.intranet.cm/webhook/zabbix-dashboard';
+const REFRESH_INTERVAL_MS = 60000;
+const SEV_COLORS = ['#64748b', '#60a5fa', '#fbbf24', '#f59e0b', '#f87171', '#ef4444'];
+const SEV_LABELS = ['Não classificado', 'Informação', 'Aviso', 'Média', 'Alta', 'Desastre'];
+let chartSev, chartHost;
+
+Chart.defaults.color = '#cbd5e1';
+Chart.defaults.font.family = '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+
+const centerTotalPlugin = {
+  id: 'centerTotal',
+  afterDraw(chart, args, options) {
+    if (!options?.display) return;
+    const { ctx, chartArea } = chart;
+    if (!chartArea) return;
+    const total = chart.data.datasets[0].data.reduce((sum, value) => sum + Number(value || 0), 0);
+    const x = (chartArea.left + chartArea.right) / 2;
+    const y = (chartArea.top + chartArea.bottom) / 2;
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = '700 30px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    ctx.fillText(total, x, y - 8);
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    ctx.fillText('eventos ativos', x, y + 18);
+    ctx.restore();
+  }
+};
+
+Chart.register(centerTotalPlugin);
+
+function getActiveSevs() {
+  return [...document.querySelectorAll('#sevFilters .pill.active')].map(el => el.dataset.sev);
+}
+
+function toggleSev(el) {
+  el.classList.toggle('active');
+  loadData();
+}
+
+function buildUrl() {
+  const sevs = getActiveSevs().join(',') || '4,5';
+  const params = new URLSearchParams({
+    severidades: sevs,
+    _: Date.now().toString()
+  });
+  return `${N8N_WEBHOOK_URL}?${params.toString()}`;
+}
+
+function toNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function cleanText(value) {
+  const text = String(value ?? '');
+  if (!/[ÃÂ]/.test(text)) return text;
+
+  try {
+    const bytes = Uint8Array.from(text, char => char.charCodeAt(0));
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    return text;
+  }
+}
+
+function normalizeSeverity(item) {
+  const nivel = toNumber(item.nivel ?? item.severity ?? item.prioridade);
+  return {
+    nivel,
+    severidade: SEV_LABELS[nivel] || cleanText(item.severidade || item.label) || 'Sem classificação',
+    count: toNumber(item.count ?? item.total ?? item.value)
+  };
+}
+
+function normalizeHost(item) {
+  return {
+    host: cleanText(item.host || item.name || item.nome || 'Host sem nome'),
+    count: toNumber(item.count ?? item.total ?? item.value)
+  };
+}
+
+function normalizePayload(payload) {
+  const data = Array.isArray(payload) ? (payload[0] || {}) : (payload || {});
+  const total = toNumber(data.total);
+
+  if (total === 0) {
+    return {
+      ...data,
+      total: 0,
+      por_severidade: [],
+      por_host: [],
+      problemas: []
+    };
+  }
+
+  return data;
+}
+
+function normalizeProblem(item) {
+  const severidadeNum = toNumber(item.severidade_num ?? item.nivel ?? item.severity ?? item.prioridade);
+  return {
+    host: cleanText(item.host || item.name || item.nome_host || 'Host sem nome'),
+    nome: cleanText(item.nome || item.problem || item.trigger || item.descricao || 'Problema sem descrição'),
+    severidade: SEV_LABELS[severidadeNum] || cleanText(item.severidade) || 'Sem classificação',
+    severidadeNum,
+    inicio: item.inicio || item.clock || item.started_at || item.data_inicio || null,
+    reconhecido: Boolean(item.reconhecido),
+    suprimido: Boolean(item.suprimido)
+  };
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, char => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  })[char]);
+}
+
+function formatDateTime(value) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
+
+function groupProblemsByHost(problems) {
+  return problems.reduce((groups, problem) => {
+    if (!groups.has(problem.host)) groups.set(problem.host, []);
+    groups.get(problem.host).push(problem);
+    return groups;
+  }, new Map());
+}
+
+function getActiveProblems(data) {
+  return (data.problemas || [])
+    .filter(problem => !problem.resolvido_em)
+    .map(normalizeProblem);
+}
+
+function buildSeverityFromProblems(problems) {
+  const counts = new Map();
+  problems.forEach(problem => {
+    counts.set(problem.severidadeNum, (counts.get(problem.severidadeNum) || 0) + 1);
+  });
+
+  return [...counts.entries()]
+    .map(([nivel, count]) => ({ nivel, severidade: SEV_LABELS[nivel] || 'Sem classificação', count }))
+    .sort((a, b) => a.nivel - b.nivel);
+}
+
+function buildHostsFromProblems(problems) {
+  return [...groupProblemsByHost(problems).entries()]
+    .map(([host, hostProblems]) => ({ host, count: hostProblems.length }))
+    .sort((a, b) => b.count - a.count || a.host.localeCompare(b.host, 'pt-BR'));
+}
+
+function severityCount(sev, nivel) {
+  return sev.find(s => s.nivel === nivel)?.count || 0;
+}
+
+function compactHostName(host) {
+  return host.length > 30 ? host.slice(0, 27) + '...' : host;
+}
+
+function setChartVisibility(emptyId, wrapId, hasData) {
+  document.getElementById(emptyId).style.display = hasData ? 'none' : 'flex';
+  document.getElementById(wrapId).style.display = hasData ? 'block' : 'none';
+}
+
+function renderHostProblems(data) {
+  const problems = getActiveProblems(data);
+  const hasProblems = problems.length > 0;
+  const empty = document.getElementById('problemEmpty');
+  const list = document.getElementById('hostProblemsList');
+
+  empty.style.display = hasProblems ? 'none' : 'flex';
+  list.style.display = hasProblems ? 'grid' : 'none';
+
+  if (!hasProblems) {
+    list.innerHTML = '';
+    return;
+  }
+
+  const groups = [...groupProblemsByHost(problems).entries()]
+    .sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0], 'pt-BR'));
+
+  list.innerHTML = groups.map(([host, hostProblems]) => {
+    const rows = hostProblems
+      .sort((a, b) => b.severidadeNum - a.severidadeNum || new Date(b.inicio || 0) - new Date(a.inicio || 0))
+      .map(problem => `
+        <div class="problem-row">
+          <span class="problem-severity s${problem.severidadeNum}">${escapeHtml(problem.severidade)}</span>
+          <div class="problem-name">${escapeHtml(problem.nome)}</div>
+          <div class="problem-time">${escapeHtml(formatDateTime(problem.inicio))}</div>
+        </div>
+      `).join('');
+    return `
+      <section class="host-group">
+        <div class="host-group-header">
+          <div class="host-name">${escapeHtml(host)}</div>
+          <div class="host-count">${hostProblems.length} problema(s)</div>
+        </div>
+        ${rows}
+      </section>
+    `;
+  }).join('');
+}
+
+function toggleHostProblemsPanel() {
+  const panel = document.getElementById('hostProblemsPanel');
+  const button = document.getElementById('toggleHostProblemsPanel');
+  const expanded = panel.classList.toggle('expanded');
+  button.textContent = expanded ? 'Reduzir' : 'Ampliar';
+  document.body.style.overflow = expanded ? 'hidden' : '';
+}
+
+function renderCharts(data) {
+  const activeProblems = getActiveProblems(data);
+  const hasProblemList = Array.isArray(data.problemas);
+  const sev = hasProblemList
+    ? buildSeverityFromProblems(activeProblems)
+    : (data.por_severidade || []).map(normalizeSeverity).filter(s => s.count > 0);
+  const altaCount = severityCount(sev, 4);
+  const desastreCount = severityCount(sev, 5);
+  const total = altaCount + desastreCount;
+  const hasSev = sev.length > 0;
+  const affectedHosts = hasProblemList
+    ? new Set(activeProblems.map(problem => problem.host)).size
+    : (data.por_host || []).filter(host => toNumber(host.count) > 0).length;
+
+  document.getElementById('mTotal').textContent = total;
+  document.getElementById('mAlta').textContent = altaCount;
+  document.getElementById('mDesastre').textContent = desastreCount;
+  document.getElementById('mHosts').textContent = affectedHosts;
+
+  setChartVisibility('sevEmpty', 'sevChartWrap', hasSev);
+  document.getElementById('sevDisaster').textContent = desastreCount;
+  document.getElementById('sevHigh').textContent = altaCount;
+  document.getElementById('sevHosts').textContent = affectedHosts;
+  document.getElementById('legendSev').innerHTML = sev.map(s =>
+    `<div class="legend-item"><span class="legend-dot" style="background:${SEV_COLORS[s.nivel] || '#64748b'}"></span>${s.severidade} <strong>${s.count}</strong></div>`
+  ).join('');
+
+  if (chartSev) chartSev.destroy();
+  if (hasSev) {
+    chartSev = new Chart(document.getElementById('chartSev'), {
+      type: 'doughnut',
+      data: {
+        labels: sev.map(s => s.severidade),
+        datasets: [{
+          data: sev.map(s => s.count),
+          backgroundColor: sev.map(s => SEV_COLORS[s.nivel] || '#64748b'),
+          borderWidth: 2,
+          borderColor: '#161b27',
+          hoverOffset: 6
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '68%',
+        plugins: {
+          centerTotal: { display: true },
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => `${ctx.label}: ${ctx.parsed} evento(s)` } }
+        }
+      }
+    });
+  }
+
+  const hosts = (hasProblemList
+    ? buildHostsFromProblems(activeProblems)
+    : (data.por_host || []).map(normalizeHost).filter(h => h.count > 0)).slice(0, 10);
+  const hasHosts = hosts.length > 0;
+  setChartVisibility('hostEmpty', 'hostWrap', hasHosts);
+  const hostWrap = document.getElementById('hostWrap');
+  hostWrap.style.height = Math.max(190, hosts.length * 34 + 56) + 'px';
+
+  if (chartHost) chartHost.destroy();
+  if (hasHosts) {
+    const maxHostCount = Math.max(...hosts.map(h => h.count));
+    chartHost = new Chart(document.getElementById('chartHost'), {
+      type: 'bar',
+      data: {
+        labels: hosts.map(h => compactHostName(h.host)),
+        datasets: [{
+          label: 'Eventos',
+          data: hosts.map(h => h.count),
+          backgroundColor: hosts.map(h => {
+            if (h.count === maxHostCount) return '#ef4444';
+            if (h.count >= Math.ceil(maxHostCount * .65)) return '#f59e0b';
+            return '#3b82f6';
+          }),
+          borderColor: hosts.map(h => h.count === maxHostCount ? '#fecaca' : 'rgba(148, 163, 184, .25)'),
+          borderWidth: 1,
+          borderRadius: 4,
+          barThickness: 20
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              title: ctx => hosts[ctx[0].dataIndex]?.host || '',
+              label: ctx => `${ctx.parsed.x} evento(s)`
+            }
+          }
+        },
+        scales: {
+          x: { beginAtZero: true, suggestedMax: maxHostCount + 1, ticks: { color: '#94a3b8', precision: 0, stepSize: 1 }, grid: { color: '#1e293b' } },
+          y: { ticks: { color: '#cbd5e1', font: { size: 11 } }, grid: { display: false } }
+        }
+      }
+    });
+  }
+
+  const sevs = getActiveSevs().join(',') || '4,5';
+  const updatedAt = data.atualizado_em ? new Date(data.atualizado_em) : new Date();
+  document.getElementById('updatedAt').textContent =
+    `Filtro: severidades [${sevs}] | somente eventos ativos | atualizado em ${updatedAt.toLocaleString('pt-BR')}`;
+
+  renderHostProblems(data);
+}
+
+async function loadData() {
+  const dot = document.getElementById('statusDot');
+  const txt = document.getElementById('statusText');
+  dot.className = 'status-dot loading';
+  txt.textContent = 'Buscando dados...';
+
+  try {
+    const res = await fetch(buildUrl(), { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = normalizePayload(await res.json());
+    renderCharts(data);
+    dot.className = 'status-dot';
+    const activeTotal = Array.isArray(data.problemas) ? getActiveProblems(data).length : toNumber(data.total);
+    txt.textContent = `${activeTotal} problema(s) - ${new Date().toLocaleTimeString('pt-BR')}`;
+  } catch (e) {
+    dot.className = 'status-dot error';
+    txt.textContent = 'Falha ao consultar n8n: ' + e.message;
+  }
+}
+
+loadData();
+setInterval(loadData, REFRESH_INTERVAL_MS);
+</script>
+</body>
+</html>
